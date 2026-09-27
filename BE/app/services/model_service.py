@@ -109,10 +109,16 @@ class ModelService:
         """
         start_time = time.perf_counter()
         
-        # 1. Google Gemini API (Free Tier from Google AI Studio)
-        if (model_id == "google-gemini-flash" or not model_id) and settings.GEMINI_API_KEY:
+        # 1. Google Gemini API (powers all model personas when API key is configured)
+        if settings.GEMINI_API_KEY and model_id != "azure-openai-gpt4o":
             try:
-                res = await self._call_gemini(prompt, chat_history, comparison_context, temperature)
+                res = await self._call_gemini(
+                    prompt=prompt,
+                    chat_history=chat_history,
+                    comparison_context=comparison_context,
+                    temperature=temperature,
+                    model_id=model_id
+                )
                 latency = round((time.perf_counter() - start_time) * 1000, 2)
                 res["latency_ms"] = latency
                 return res
@@ -139,7 +145,7 @@ class ModelService:
             except Exception as e:
                 logger.warning(f"OpenAI call failed: {e}")
 
-        # 4. In-House Generative AI Engine
+        # 4. In-House Generative AI Engine (Offline Fallback)
         response_text, prompt_tokens, comp_tokens = self._generate_dynamic_inhouse_response(
             prompt=prompt,
             model_id=model_id,
@@ -164,23 +170,46 @@ class ModelService:
         prompt: str,
         chat_history: Optional[List[Dict[str, str]]],
         comparison_context: Optional[Dict[str, Any]],
-        temperature: float
+        temperature: float,
+        model_id: str = "google-gemini-flash"
     ) -> Dict[str, Any]:
         """
-        Calls Google Gemini 1.5 Flash Free API via Google AI Studio.
+        Calls Google Gemini API with model fallback and persona-based instructions.
         """
-        model = settings.GEMINI_MODEL or "gemini-1.5-flash"
         api_key = settings.GEMINI_API_KEY
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        headers = {
+            "x-goog-api-key": api_key,
+            "Content-Type": "application/json"
+        }
 
         # Build contents array
         contents = []
         
-        # System instructions & DB Context
-        system_context = (
-            "You are an enterprise AI assistant specializing in 3-Tier Cloud Architectures, "
-            "DevOps, Azure Kubernetes Service (AKS), Terraform IaC, and PostgreSQL database design."
-        )
+        # Specialized persona guidelines
+        persona_instructions = {
+            "google-gemini-flash": (
+                "You are an expert AI assistant specializing in 3-Tier Cloud Architectures, "
+                "DevOps, Azure Kubernetes Service (AKS), Terraform IaC, PostgreSQL database design, and software engineering. "
+                "Provide detailed, comprehensive, high-quality, and helpful answers with production-ready code examples where applicable."
+            ),
+            "inhouse-llama3-enterprise": (
+                "You are In-House LLaMA-3 Enterprise, an advanced reasoning and cloud architecture intelligence engine. "
+                "Provide rigorous architectural analysis, scalability recommendations, distributed systems patterns, and fault-tolerant cloud design."
+            ),
+            "inhouse-devops-copilot": (
+                "You are In-House DevOps & Kubernetes Copilot, an expert DevOps engineer specializing in Azure AKS, "
+                "Docker containerization, Helm 3 charts, Terraform IaC, and GitHub Actions CI/CD automation. Answer any engineering question thoroughly."
+            ),
+            "inhouse-security-analyzer": (
+                "You are In-House Cloud Security & Compliance Analyzer, an expert SecOps and cybersecurity engineer. "
+                "Specialize in Kubernetes RBAC, IAM policies, secret scanning, TLS/mTLS, container hardening, and AKS Pod Security Standards."
+            ),
+            "inhouse-fast-rag": (
+                "You are In-House Enterprise RAG & Knowledge Synthesizer. Provide thorough, insightful answers by combining "
+                "database knowledge baselines with deep engineering domain expertise."
+            )
+        }
+        system_context = persona_instructions.get(model_id, persona_instructions["google-gemini-flash"])
         if comparison_context and comparison_context.get("matches_found", 0) > 0:
             top_m = comparison_context["matches"][0]
             system_context += (
@@ -194,23 +223,32 @@ class ModelService:
         })
         contents.append({
             "role": "model",
-            "parts": [{"text": "Understood. I will provide accurate, clean, production-grade responses with clear markdown and code blocks."}]
+            "parts": [{"text": "Understood. I will provide accurate, detailed, comprehensive, and production-grade responses with clear explanations and clean code blocks."}]
         })
 
-        # Append chat history
+        # Append previous chat history (ensuring proper alternating user/model turns)
         if chat_history:
             for msg in chat_history[-6:]:
                 role = "user" if msg.get("role") == "user" else "model"
-                contents.append({
-                    "role": role,
-                    "parts": [{"text": msg.get("content", "")}]
-                })
+                text = (msg.get("content") or "").strip()
+                if not text:
+                    continue
+                if contents and contents[-1]["role"] == role:
+                    contents[-1]["parts"][0]["text"] += f"\n\n{text}"
+                else:
+                    contents.append({
+                        "role": role,
+                        "parts": [{"text": text}]
+                    })
 
         # Append current user prompt
-        contents.append({
-            "role": "user",
-            "parts": [{"text": prompt}]
-        })
+        if contents and contents[-1]["role"] == "user":
+            contents[-1]["parts"][0]["text"] += f"\n\n{prompt}"
+        else:
+            contents.append({
+                "role": "user",
+                "parts": [{"text": prompt}]
+            })
 
         payload = {
             "contents": contents,
@@ -221,26 +259,47 @@ class ModelService:
             }
         }
 
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            candidates = data.get("candidates", [])
-            if not candidates:
-                raise ValueError("No candidate response returned by Gemini API")
-                
-            text_response = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            usage = data.get("usageMetadata", {})
-            
-            return {
-                "content": text_response,
-                "model_id": "google-gemini-flash",
-                "tokens_prompt": usage.get("promptTokenCount", 0),
-                "tokens_completion": usage.get("candidatesTokenCount", 0),
-                "latency_ms": 0.0,
-                "provider": "Google DeepMind (Free Tier)"
-            }
+        # Fast, stable candidate models list
+        candidate_models = [
+            settings.GEMINI_MODEL,
+            "gemini-flash-lite-latest",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
+        candidate_models = list(dict.fromkeys([m for m in candidate_models if m and m != "gemini-1.5-flash"]))
+
+        last_error = None
+        for candidate in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent"
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(url, headers=headers, json=payload)
+                    if response.status_code in [404, 429, 500, 503]:
+                        logger.warning(f"Gemini model {candidate} returned status {response.status_code}. Trying next candidate.")
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        continue
+                    text_response = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    usage = data.get("usageMetadata", {})
+                    provider_name = self.AVAILABLE_MODELS.get(model_id, {}).get("provider", "Google DeepMind")
+                    return {
+                        "content": text_response,
+                        "model_id": model_id,
+                        "tokens_prompt": usage.get("promptTokenCount", 0),
+                        "tokens_completion": usage.get("candidatesTokenCount", 0),
+                        "latency_ms": 0.0,
+                        "provider": f"{provider_name} (Gemini Engine)"
+                    }
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Gemini call with {candidate} failed: {e}. Trying fallback model.")
+                continue
+
+        if last_error:
+            raise last_error
 
     def _generate_dynamic_inhouse_response(
         self,

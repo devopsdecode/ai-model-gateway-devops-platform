@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ==========================================
   # TIER 3: PostgreSQL Database
@@ -8,19 +6,24 @@ services:
     image: postgres:16-alpine
     container_name: ai_postgres_db
     restart: unless-stopped
+
     environment:
       POSTGRES_USER: dbadmin
       POSTGRES_PASSWORD: SecureLocalPassword123!
       POSTGRES_DB: aidatabase
+
     ports:
       - "5432:5432"
+
     volumes:
       - postgres_ai_data:/var/lib/postgresql/data
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dbadmin -d aidatabase"]
+      test: [ "CMD-SHELL", "pg_isready -U dbadmin -d aidatabase" ]
       interval: 5s
       timeout: 5s
       retries: 5
+
     networks:
       ai-network:
         aliases:
@@ -34,30 +37,42 @@ services:
     build:
       context: ./BE
       dockerfile: Dockerfile
+
     container_name: ai_backend_service
     restart: unless-stopped
+
     environment:
       ENVIRONMENT: development
       DEBUG: "True"
+
       DATABASE_URL: postgresql+asyncpg://dbadmin:SecureLocalPassword123!@postgres-db:5432/aidatabase
+
       DEFAULT_MODEL_ID: google-gemini-flash
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-AQ.Ab8RN6JTljnxd3V4sU7qOe30nbr8eiPVlgv4samn3UIaU2EVPQ}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
     ports:
       - "8000:8000"
+
     volumes:
       - ./BE/app:/app/app
+
     depends_on:
       postgres-db:
         condition: service_healthy
+
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health/live" ]
       interval: 10s
       timeout: 5s
       retries: 3
+
     networks:
       ai-network:
         aliases:
@@ -65,29 +80,39 @@ services:
           - ai-backend-service
 
   # ==========================================
-  # TIER 1: React Single-Page Application (FE)
+  # TIER 1: React Single-Page Application
   # ==========================================
   ai-frontend:
     build:
       context: ./FE
       dockerfile: Dockerfile
+
     container_name: ai_frontend_web
     restart: unless-stopped
+
     ports:
       - "3000:80"
+
     depends_on:
       ai-backend:
         condition: service_healthy
+
     networks:
       ai-network:
         aliases:
           - ai-frontend
           - ai-frontend-service
 
+# ==========================================
+# VOLUMES
+# ==========================================
 volumes:
   postgres_ai_data:
     name: postgres_ai_data
 
+# ==========================================
+# NETWORK
+# ==========================================
 networks:
   ai-network:
     name: ai_tier_network

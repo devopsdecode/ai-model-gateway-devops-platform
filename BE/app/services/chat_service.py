@@ -149,10 +149,10 @@ class ChatService:
         await db.commit()
         await db.refresh(user_msg)
 
-        # 3. Explicitly load recent history asynchronously (prevents greenlet lazy load issues)
+        # 3. Explicitly load recent history asynchronously (excluding current user message)
         stmt_hist = (
             select(ChatMessage)
-            .where(ChatMessage.session_id == session.id)
+            .where(ChatMessage.session_id == session.id, ChatMessage.id != user_msg.id)
             .order_by(desc(ChatMessage.created_at))
             .limit(8)
         )
