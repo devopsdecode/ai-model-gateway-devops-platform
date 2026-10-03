@@ -2,8 +2,8 @@ name: Self-Hosted Master-Runner CI/CD Pipeline
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master, staging, 'release/*']
+  # push:
+  #   branches: [main, master, staging, 'release/*']
 
 env:
   AZURE_RESOURCE_GROUP: master-node-rg-fresh

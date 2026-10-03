@@ -29,6 +29,8 @@ jobs:
   test-and-lint:
     name: Lint & Unit Tests (FE & BE)
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}/BE
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -43,7 +45,7 @@ jobs:
         working-directory: ./BE
         run: |
           pip install -r requirements.txt
-          pytest tests/ -v
+          PYTHONPATH="${{ github.workspace }}/BE" pytest tests/ -v
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
