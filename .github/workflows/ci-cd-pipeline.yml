@@ -105,8 +105,9 @@ jobs:
         run: |
           set -euxo pipefail
           az account show >/dev/null
-          az acr login --name "${{ env.ACR_NAME }}"
+          az acr login --name "${{ env.ACR_NAME }}" --expose-token > /tmp/acr-token.json
           echo "Azure CLI is authenticated and ACR access is available on this runner."
+          jq -r '.accessToken' /tmp/acr-token.json | docker login "${{ env.ACR_NAME }}.azurecr.io" --username 00000000-0000-0000-0000-000000000000 --password-stdin
 
       - name: Build and Tag Backend Image
         run: |
