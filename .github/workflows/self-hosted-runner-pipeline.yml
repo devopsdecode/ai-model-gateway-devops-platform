@@ -15,7 +15,7 @@ env:
 jobs:
   build-and-deploy-on-runner:
     name: Build and Deploy on Self-Hosted AKS Runner
-    runs-on: [self-hosted, master-node, aks-runner]
+    runs-on: self-hosted
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

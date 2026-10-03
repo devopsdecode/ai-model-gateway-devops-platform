@@ -93,25 +93,18 @@ jobs:
   build-and-push:
     name: Build & Push Docker Images to ACR
     needs: [test-and-lint, security-scan]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Azure Login
-        uses: azure/login@v2
-        if: env.AZURE_CREDENTIALS != ''
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Log in to Azure Container Registry (ACR)
+      - name: Verify Azure CLI is already authenticated on the runner
         run: |
-          if [ -n "${{ secrets.ACR_USERNAME }}" ]; then
-            echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ env.ACR_NAME }}.azurecr.io -u ${{ secrets.ACR_USERNAME }} --password-stdin
-          else
-            echo "Mocking ACR login for self-contained validation"
-          fi
+          set -euxo pipefail
+          az account show >/dev/null
+          az acr login --name "${{ env.ACR_NAME }}"
+          echo "Azure CLI is authenticated and ACR access is available on this runner."
 
       - name: Build and Tag Backend Image
         run: |
@@ -122,7 +115,6 @@ jobs:
           docker build -t ${{ env.ACR_NAME }}.azurecr.io/ai-frontend:${{ env.IMAGE_TAG }} -t ${{ env.ACR_NAME }}.azurecr.io/ai-frontend:latest ./FE
 
       - name: Push Images to ACR
-        if: env.AZURE_CREDENTIALS != ''
         run: |
           docker push ${{ env.ACR_NAME }}.azurecr.io/ai-backend:${{ env.IMAGE_TAG }}
           docker push ${{ env.ACR_NAME }}.azurecr.io/ai-backend:latest
@@ -135,21 +127,21 @@ jobs:
   deploy-to-aks:
     name: Deploy 3-Tier Stack to Azure AKS
     needs: build-and-push
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Kubectl & Helm
-        uses: azure/setup-helm@v4
-
-      - name: Set AKS Cluster Context
-        if: env.AZURE_CREDENTIALS != ''
-        uses: azure/aks-set-context@v3
-        with:
-          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
-          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+      - name: Verify Azure CLI and cluster access on the runner
+        run: |
+          set -euxo pipefail
+          az account show >/dev/null
+          az aks get-credentials \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ env.AKS_CLUSTER_NAME }}" \
+            --overwrite-existing
+          kubectl config current-context
 
       - name: Deploy Helm Chart to AKS
         run: |

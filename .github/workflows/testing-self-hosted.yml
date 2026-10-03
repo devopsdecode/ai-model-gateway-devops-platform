@@ -2,9 +2,7 @@
 name: Run the job on self-hosted application
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   testing:
