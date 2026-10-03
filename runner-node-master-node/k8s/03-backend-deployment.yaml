@@ -29,7 +29,7 @@ spec:
         fsGroup: 2000
       containers:
       - name: backend-api
-        image: acrenterpriseai.azurecr.io/ai-backend:latest
+        image: endtoendproject.azurecr.io/ai-backend:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000

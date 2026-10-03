@@ -1,6 +1,6 @@
 global:
   environment: "production"
-  registry: "acrenterpriseai.azurecr.io"
+  registry: "endtoendproject.azurecr.io"
   imagePullPolicy: "IfNotPresent"
 
 # Tier 1: Frontend (React SPA + Nginx)

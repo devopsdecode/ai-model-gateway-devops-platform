@@ -5,9 +5,9 @@ metadata:
   name: master-node-orchestrator-config
   namespace: actions-runner-system
 data:
-  CLUSTER_NAME: "aks-enterprise-ai-cluster"
-  RESOURCE_GROUP: "rg-enterprise-ai-aks"
-  ACR_REGISTRY: "acrenterpriseai.azurecr.io"
+  CLUSTER_NAME: "aks-end-to-end-project"
+  RESOURCE_GROUP: "master-node-rg-fresh"
+  ACR_REGISTRY: "endtoendproject.azurecr.io"
   RUNNER_LABELS: "self-hosted,master-node,aks-runner,docker-in-docker"
   AUTO_SCALE_MIN: "2"
   AUTO_SCALE_MAX: "10"
