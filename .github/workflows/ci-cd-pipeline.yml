@@ -17,9 +17,9 @@ on:
           - production
 
 env:
-  AZURE_RESOURCE_GROUP: rg-enterprise-ai-aks
-  AKS_CLUSTER_NAME: aks-enterprise-ai-cluster
-  ACR_NAME: acrenterpriseai
+  AZURE_RESOURCE_GROUP: master-node-rg-fresh
+  AKS_CLUSTER_NAME: aks-end-to-end-project
+  ACR_NAME: endtoendproject
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
