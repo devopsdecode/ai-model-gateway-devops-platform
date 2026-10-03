@@ -107,7 +107,22 @@ jobs:
           az account show >/dev/null
           az acr login --name "${{ env.ACR_NAME }}" --expose-token > /tmp/acr-token.json
           echo "Azure CLI is authenticated and ACR access is available on this runner."
-          jq -r '.accessToken' /tmp/acr-token.json | docker login "${{ env.ACR_NAME }}.azurecr.io" --username 00000000-0000-0000-0000-000000000000 --password-stdin
+
+          ACR_REFRESH_TOKEN="$(python3 - <<'PY'
+          import json
+          with open('/tmp/acr-token.json', 'r', encoding='utf-8') as fh:
+              data = json.load(fh)
+          token = data.get('refreshToken') or data.get('accessToken') or ''
+          print(token)
+          PY
+          )"
+
+          if [ -z "$ACR_REFRESH_TOKEN" ]; then
+            echo "Failed to read ACR refresh token from az acr login output." >&2
+            exit 1
+          fi
+
+          printf '%s' "$ACR_REFRESH_TOKEN" | docker login "${{ env.ACR_NAME }}.azurecr.io" --username 00000000-0000-0000-0000-000000000000 --password-stdin
 
       - name: Build and Tag Backend Image
         run: |
